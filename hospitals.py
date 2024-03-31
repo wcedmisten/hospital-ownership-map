@@ -10,12 +10,16 @@ def get_hospital_records():
     # Open a cursor to perform database operations
     cur = conn.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
 
-    osm_query = """SELECT ST_AsText(ST_Transform(ST_Centroid(way),4326)) AS centroid,osm_id,name,operator FROM planet_osm_polygon WHERE amenity='hospital' AND ("healthcare:speciality" != 'psychiatry' OR "healthcare:speciality" IS NULL)"""
+    where_clause = """ WHERE amenity='hospital' 
+    AND ("healthcare:speciality" != 'psychiatry' OR "healthcare:speciality" IS NULL)
+    AND (name NOT ILIKE '%veterans affairs%' OR name IS NULL)"""
+
+    osm_query = """SELECT ST_AsText(ST_Transform(ST_Centroid(way),4326)) AS centroid,osm_id,name,operator FROM planet_osm_polygon """ + where_clause
     cur.execute(osm_query)
 
     polygon_records = cur.fetchall()
 
-    osm_query = """SELECT ST_AsText(ST_Transform(way,4326)) AS centroid,osm_id,name,operator FROM planet_osm_point WHERE amenity='hospital' AND ("healthcare:speciality" != 'psychiatry' OR "healthcare:speciality" IS NULL)"""
+    osm_query = """SELECT ST_AsText(ST_Transform(way,4326)) AS centroid,osm_id,name,operator FROM planet_osm_point """ + where_clause
 
     cur.execute(osm_query)
 
