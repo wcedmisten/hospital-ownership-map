@@ -11,7 +11,10 @@ def get_hospital_records():
     cur = conn.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
 
     where_clause = """ WHERE amenity='hospital' 
-    AND ("healthcare:speciality" != 'psychiatry' OR "healthcare:speciality" IS NULL)
+    AND ("healthcare:speciality" IS DISTINCT FROM 'psychiatry')
+    AND (healthcare IS DISTINCT FROM 'rehabilitation')
+    AND ("healthcare:speciality" IS DISTINCT FROM 'rehabilitation')
+    AND (operator IS DISTINCT FROM 'Veterans Health Administration')
     AND (name NOT ILIKE '%veterans affairs%' OR name IS NULL)"""
 
     osm_query = """SELECT ST_AsText(ST_Transform(ST_Centroid(way),4326)) AS centroid,osm_id,name,operator FROM planet_osm_polygon """ + where_clause

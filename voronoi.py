@@ -38,10 +38,18 @@ operators = list(
 operators_cleanup_map = {"Bon Secours Health System": "Bon Secours",
                         "HCA": "HCA Virginia",
                         'HCA Virginia Health System': 'HCA Virginia',
-                        'VCU': 'VCU Health'}
+                        'VCU': 'VCU Health',
+                        'Sentara': 'Sentara Healthcare',
+                        'Riverside': 'Riverside Health System',
+                        'Novant Health UVA Health System': 'University of Virginia Health System',
+                        'Mountain States Health Alliance': 'Ballad Health'
+                        }
 
 # replace names in the cleanup map to standardize the data
 operators = [operators_cleanup_map.get(operator, operator) for operator in operators]
+
+import pprint
+pprint.pprint(set(operators))
 
 hospitals_dataframe = pd.DataFrame(
     {"geometry": points, "name": names, "operator": operators}
