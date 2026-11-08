@@ -2,7 +2,7 @@ version: "3.9"  # optional since v1.27.0
 services:
   postgis:
     container_name: postgis
-    image: postgis/postgis
+    build: .
     ports:
       - "15432:5432"
     environment:
@@ -11,4 +11,8 @@ services:
       - type: bind
         source: ./postgresql.conf
         target: /etc/postgresql.conf
+      - type: bind
+        # update this with path to osm pbf
+        source: ${PWD}/postgis_osm_data/extract.osm.pbf
+        target: /extract.osm.pbf
     command: ["postgres", "-c", "config_file=/etc/postgresql.conf"]

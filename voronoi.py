@@ -7,6 +7,7 @@ from colorhash import ColorHash
 
 import pandas as pd
 
+from shapely.ops import unary_union as union
 from shapely.geometry import MultiPoint, Point, Polygon, shape
 from shapely.ops import voronoi_diagram
 
@@ -34,25 +35,17 @@ operators = list(
     ]
 )
 
-# standardize operator names
-operators_cleanup_map = {"Bon Secours Health System": "Bon Secours",
-                        "HCA": "HCA Virginia",
-                        'HCA Virginia Health System': 'HCA Virginia',
-                        'VCU': 'VCU Health',
-                        'Sentara': 'Sentara Healthcare',
-                        'Riverside': 'Riverside Health System',
-                        'Novant Health UVA Health System': 'University of Virginia Health System',
-                        'Mountain States Health Alliance': 'Ballad Health'
-                        }
-
-# replace names in the cleanup map to standardize the data
-operators = [operators_cleanup_map.get(operator, operator) for operator in operators]
+osm_ids = list([hospital["osm_id"] for hospital in hospitals_data])
 
 import pprint
-pprint.pprint(set(operators))
+
+operator_counts = {operator: operators.count(operator) for operator in set(operators)}
+pprint.pprint(operator_counts)
+with open("operator_counts.json", "w") as f:
+    json.dump(operator_counts, f, indent=4)
 
 hospitals_dataframe = pd.DataFrame(
-    {"geometry": points, "name": names, "operator": operators}
+    {"geometry": points, "name": names, "operator": operators, "osm_id": osm_ids}
 )
 
 
@@ -60,7 +53,7 @@ def color_by_row(row):
     if row["operator"] != "UNKNOWN":
         return ColorHash(row["operator"]).hex
     else:
-        return ColorHash(row["name"]).hex
+        return "#dedede"
 
 # set the color based on operator
 hospitals_dataframe["color"] = hospitals_dataframe.apply(
@@ -68,20 +61,87 @@ hospitals_dataframe["color"] = hospitals_dataframe.apply(
 )
 
 hospital_gdf = gpd.GeoDataFrame(hospitals_dataframe, crs="EPSG:4326")
+nearest_df = gpd.sjoin_nearest(
+    hospital_gdf, 
+    hospital_gdf, 
+    how='inner', 
+    exclusive=True, 
+    distance_col="distance_to_nearest"
+)
+print("nearest")
+print(nearest_df.sort_values(by="distance_to_nearest").head(20))
+
+duplicate_rows = hospital_gdf[hospital_gdf.duplicated(subset="geometry", keep=False)]
+print(f"Found {len(duplicate_rows)} duplicates")
+print(duplicate_rows)
 
 world = gpd.read_file(geodatasets.get_path("naturalearth.land"))
 
 with open("states.json") as f:
     states = json.load(f)
 
-virginia = list(filter(lambda s: s["properties"]["name"] == "Virginia", states["features"]))[0]
+print(list(map(lambda s: s["properties"]["name"], states["features"])))
 
-virginia_bounds = shape(virginia["geometry"])
+included_states = [
+    "Virginia", # cleaned
+    "District of Columbia", # cleaned
+    "West Virginia", # cleaned
+    "Maryland", # cleaned
+    "Kentucky", # cleaned
+    "Tennessee", # cleaned
+    "North Carolina", # cleaned
+    "South Carolina", # cleaned
+    "Georgia", # cleaned
+    "Alabama", # cleaned
+    "Delaware", # cleaned
+    "Pennsylvania", # cleaned
+    "New Jersey", # cleaned
+    "New York", # cleaned
+    "Florida", # cleaned
+    "Connecticut", # cleaned
+    "Rhode Island", # cleaned
+    "New Hampshire", # cleaned
+    "Massachusetts", # cleaned
+    "Vermont", # cleaned
+    "Ohio", # cleaned
+    "Maine", # cleaned
+    "Mississippi", # cleaned
+    "Indiana", # cleaned
+    "Michigan", # cleaned
+    "Wisconsin", # cleaned
+    "Illinois", # cleaned
+    "Louisiana", # cleaned
+    "Missouri", # cleaned
+    "Iowa",
+    "Arkansas",
+    "Minnesota",
+    "North Dakota",
+    "South Dakota",
+    "Nebraska",
+    "Kansas",
+    "Oklahoma",
+    "Texas",
+    "Montana",
+    "Wyoming",
+    "Colorado",
+    "New Mexico",
+    "Utah",
+    "Arizona",
+    "Idaho",
+    "Nevada",
+    "California",
+    "Oregon",
+    "Washington"
+    ]
+
+states_features = list(filter(lambda s: s["properties"]["name"] in included_states, states["features"]))
+
+states_bounds = union(list(map(lambda s: shape(s["geometry"]), states_features)))
 
 hospital_voronoi_regions = VoronoiRegionalizer(seeds=hospital_gdf).transform()
 
 hospital_voronoi_regions["geometry"] = hospital_voronoi_regions.apply(
-    lambda row: virginia_bounds.intersection(row["geometry"]), axis=1
+    lambda row: states_bounds.intersection(row["geometry"]), axis=1
 )
 
 def plot_flat(

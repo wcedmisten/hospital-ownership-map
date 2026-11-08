@@ -4,31 +4,49 @@ import json
 from shapely.geometry import Point
 import os
 
+# standardize operator names
+operators_cleanup_map = {
+    # "HCA": "HCA Virginia",
+}
+
+
 def get_hospital_records():
-    conn = psycopg2.connect("host=localhost dbname=postgres user=postgres port=15432 password=password")
+    conn = psycopg2.connect(
+        "host=localhost dbname=postgres user=postgres port=15432 password=password"
+    )
 
     # Open a cursor to perform database operations
-    cur = conn.cursor(cursor_factory = psycopg2.extras.RealDictCursor)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    where_clause = """ WHERE amenity='hospital' 
-    AND ("healthcare:speciality" IS DISTINCT FROM 'psychiatry')
-    AND (healthcare IS DISTINCT FROM 'rehabilitation')
-    AND ("healthcare:speciality" IS DISTINCT FROM 'rehabilitation')
-    AND (operator IS DISTINCT FROM 'Veterans Health Administration')
-    AND (name NOT ILIKE '%veterans affairs%' OR name IS NULL)"""
+    where_clause = """ WHERE tags->>'amenity'='hospital' 
+    AND (tags->>'healthcare:speciality' IS DISTINCT FROM 'psychiatry')
+    AND (tags->>'healthcare:speciality' IS DISTINCT FROM 'behavior')
+    AND (tags->>'healthcare:speciality' IS DISTINCT FROM 'child_psychiatry')
+    AND (tags->>'healthcare' IS DISTINCT FROM 'rehabilitation')
+    AND (tags->>'healthcare:speciality' IS DISTINCT FROM 'rehabilitation')
+    AND (tags->>'operator' IS DISTINCT FROM 'Veterans Health Administration')
+    AND (tags->>'operator' IS DISTINCT FROM 'United States Air Force')
+    AND (tags->>'operator' IS DISTINCT FROM 'United States Navy')
+    AND (tags->>'operator' IS DISTINCT FROM 'United States Army')
+    AND (tags->>'temporary' IS DISTINCT FROM 'yes')
+    AND (tags->>'name' NOT ILIKE '%veterans affairs%')
+    AND (tags->>'name' IS NOT NULL)"""
 
-    osm_query = """SELECT ST_AsText(ST_Transform(ST_Centroid(way),4326)) AS centroid,osm_id,name,operator FROM planet_osm_polygon """ + where_clause
+    osm_query = (
+        """SELECT ST_AsText(ST_Transform(geom,4326)) AS centroid, osm_id , name, tags->>'operator' as operator FROM hospitals """
+        + where_clause
+    )
+
     cur.execute(osm_query)
 
-    polygon_records = cur.fetchall()
+    all_records = cur.fetchall()
 
-    osm_query = """SELECT ST_AsText(ST_Transform(way,4326)) AS centroid,osm_id,name,operator FROM planet_osm_point """ + where_clause
+    # replace names in the cleanup map to standardize the data
+    for record in all_records:
+        record["operator"] = operators_cleanup_map.get(record["operator"], record["operator"])
 
-    cur.execute(osm_query)
+    return all_records
 
-    point_records = cur.fetchall()
-
-    return polygon_records + point_records
 
 def structure_record(record):
     name = record["name"]
@@ -37,7 +55,14 @@ def structure_record(record):
     lon = float(lon)
     lat = float(lat)
 
-    return {"name": name, "lon": lon, "lat": lat, "osm_id": record["osm_id"], "operator": record["operator"]}
+    return {
+        "name": name,
+        "lon": lon,
+        "lat": lat,
+        "osm_id": record["osm_id"],
+        "operator": record["operator"],
+    }
+
 
 if os.path.isfile("hospitals.json"):
     with open("hospitals.json", "r") as f:
