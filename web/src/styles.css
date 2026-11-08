@@ -18,6 +18,33 @@ body,
     height: 100%;
 }
 
+.wip-banner {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    background-color: #fff3cd;
+    color: #664d03;
+    border: 1px solid #ffecb5;
+    border-top: none;
+    border-radius: 0 0 7px 7px;
+    box-shadow: 2px 2px rgba(0, 0, 0, 0.1);
+    font-family: sans-serif;
+    font-size: 14px;
+    padding: 6px 14px;
+    text-align: center;
+    max-width: calc(100% - 20px);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.wip-banner .btn-close {
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
 .legend {
     background-color: #fff;
     border-radius: 7px;

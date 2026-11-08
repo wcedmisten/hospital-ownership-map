@@ -14,6 +14,7 @@ import {
 // Vite pre-bundles it; point it at a Vite-managed copy of the worker instead.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import Accordion from "react-bootstrap/Accordion";
+import CloseButton from "react-bootstrap/CloseButton";
 import Modal from "react-bootstrap/Modal";
 
 import positronLayers from "./data/positron_style.json";
@@ -126,6 +127,7 @@ export default function HospitalMap() {
   const mapRef = useRef<MapLibreMap | null>(null);
   const [regions, setRegions] = useState<Regions | null>(null);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showWipBanner, setShowWipBanner] = useState(true);
 
   // Load the (large) voronoi regions once; they feed both the map and the legend.
   useEffect(() => {
@@ -243,6 +245,12 @@ export default function HospitalMap() {
 
   return (
     <main className="map-wrap">
+      {showWipBanner && (
+        <div className="wip-banner" role="status">
+          <span>⚠️ Work in progress: this data is undergoing further validation.</span>
+          <CloseButton aria-label="Dismiss" onClick={() => setShowWipBanner(false)} />
+        </div>
+      )}
       <InfoModal show={showInfoModal} onHide={() => setShowInfoModal(false)} />
       <div ref={mapContainer} className="map" />
       <div id="state-legend" className="legend">
