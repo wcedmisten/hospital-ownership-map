@@ -1,5 +1,4 @@
-psycopg2-binary
-psycopg2
+duckdb
 pyproj
 rasterio
 rasterstats

@@ -1,2 +1,2 @@
 .venv
-osm2pgsql/postgis_osm_data
+extract.osm.pbf
