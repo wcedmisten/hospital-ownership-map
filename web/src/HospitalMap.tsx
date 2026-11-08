@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FeatureCollection, MultiPolygon, Polygon, Position } from "geojson";
 import {
   LngLatBounds,
@@ -50,14 +50,22 @@ function selectionFor(properties: RegionProperties): Selection {
     : { key: "operator", value: properties.operator };
 }
 
-function highlight(map: MapLibreMap, { key, value }: Selection) {
-  const opacity = ["match", ["get", key], value, 0.5, 0.1] as ExpressionSpecification;
-  map.setPaintProperty("voronoi", "fill-opacity", opacity);
-}
+const sameSelection = (a: Selection | null, b: Selection | null) =>
+  a?.key === b?.key && a?.value === b?.value;
 
-function focus(map: MapLibreMap, regions: Regions, selection: Selection) {
-  highlight(map, selection);
+// While something is highlighted, regions with the "highlight" feature-state stay
+// opaque and everything else is dimmed. Toggling the paint property only when a
+// highlight starts/ends (and flipping feature-state otherwise) avoids re-evaluating
+// the layer's paint on every mouse move.
+const HIGHLIGHT_OPACITY: ExpressionSpecification = [
+  "case",
+  ["boolean", ["feature-state", "highlight"], false],
+  0.5,
+  0.1,
+];
+const DEFAULT_OPACITY = 0.5;
 
+function fitSelection(map: MapLibreMap, regions: Regions, selection: Selection) {
   const bounds = new LngLatBounds();
   const extend = (coords: Position[]) =>
     coords.forEach(([lng, lat]) => bounds.extend([lng, lat]));
@@ -163,6 +171,7 @@ export default function HospitalMap() {
           voronoi: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
+            promoteId: "osm_id",
           },
         },
         layers: positronLayers as LayerSpecification[],
@@ -180,16 +189,8 @@ export default function HospitalMap() {
       if (!map.hasImage("hospitalMarker")) map.addImage("hospitalMarker", image.data);
     });
 
-    map.on("mousemove", "voronoi", (e: MapLayerMouseEvent) => {
-      const properties = e.features?.[0]?.properties as RegionProperties | undefined;
-      if (properties) highlight(map, selectionFor(properties));
-    });
     map.on("mouseenter", "voronoi", () => {
       map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", "voronoi", () => {
-      map.getCanvas().style.cursor = "";
-      map.setPaintProperty("voronoi", "fill-opacity", 0.5);
     });
 
     return () => {
@@ -199,7 +200,54 @@ export default function HospitalMap() {
     };
   }, []);
 
-  // Push regions into the map and wire up click-to-focus once both exist.
+  const operatorIds = useMemo(() => {
+    const index = new Map<string, number[]>();
+    for (const { properties } of regions?.features ?? []) {
+      const ids = index.get(properties.operator);
+      if (ids) ids.push(properties.osm_id);
+      else index.set(properties.operator, [properties.osm_id]);
+    }
+    return index;
+  }, [regions]);
+
+  const highlighted = useRef<Selection | null>(null);
+
+  const setHighlight = useCallback(
+    (map: MapLibreMap, selection: Selection | null) => {
+      const previous = highlighted.current;
+      if (sameSelection(previous, selection)) return;
+
+      const idsFor = ({ key, value }: Selection) =>
+        key === "osm_id" ? [value] : (operatorIds.get(value) ?? []);
+      const setState = (selection: Selection, highlight: boolean) => {
+        for (const id of idsFor(selection)) {
+          map.setFeatureState({ source: "voronoi", id }, { highlight });
+        }
+      };
+
+      if (previous) setState(previous, false);
+      if (selection) setState(selection, true);
+      if (!previous !== !selection) {
+        map.setPaintProperty(
+          "voronoi",
+          "fill-opacity",
+          selection ? HIGHLIGHT_OPACITY : DEFAULT_OPACITY,
+        );
+      }
+      highlighted.current = selection;
+    },
+    [operatorIds],
+  );
+
+  const focus = useCallback(
+    (map: MapLibreMap, regions: Regions, selection: Selection) => {
+      setHighlight(map, selection);
+      fitSelection(map, regions, selection);
+    },
+    [setHighlight],
+  );
+
+  // Push regions into the map and wire up hover/click once both exist.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !regions) return;
@@ -225,11 +273,24 @@ export default function HospitalMap() {
       focus(map, regions, selectionFor(properties));
     };
 
+    const onMouseMove = (e: MapLayerMouseEvent) => {
+      const properties = e.features?.[0]?.properties as RegionProperties | undefined;
+      if (properties) setHighlight(map, selectionFor(properties));
+    };
+    const onMouseLeave = () => {
+      map.getCanvas().style.cursor = "";
+      setHighlight(map, null);
+    };
+
     map.on("click", "voronoi", onClick);
+    map.on("mousemove", "voronoi", onMouseMove);
+    map.on("mouseleave", "voronoi", onMouseLeave);
     return () => {
       map.off("click", "voronoi", onClick);
+      map.off("mousemove", "voronoi", onMouseMove);
+      map.off("mouseleave", "voronoi", onMouseLeave);
     };
-  }, [regions]);
+  }, [regions, focus, setHighlight]);
 
   // Operators sorted by number of hospitals, largest networks first.
   const operators = useMemo(() => {
